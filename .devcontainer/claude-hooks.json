@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".devcontainer/session-start-github-check.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
