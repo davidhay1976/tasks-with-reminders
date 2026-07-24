@@ -18,10 +18,27 @@ export default function Home() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recents, setRecents] = useState<RecentMove[]>([]);
+  const [pasted, setPasted] = useState("");
+  const [pasteError, setPasteError] = useState<string | null>(null);
 
   useEffect(() => {
     setRecents(listRecentMoves());
   }, []);
+
+  function openPastedLink(e: React.FormEvent) {
+    e.preventDefault();
+    setPasteError(null);
+    const raw = pasted.trim();
+    if (!raw) return;
+    // Accept: full URL (…/m/<token>), path (/m/<token>), or bare UUID token.
+    const uuidRe = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const match = raw.match(uuidRe);
+    if (!match) {
+      setPasteError("Doesn't look like a move link — expected a URL or a token.");
+      return;
+    }
+    router.push(`/m/${match[0]}`);
+  }
 
   async function startMove(e: React.FormEvent) {
     e.preventDefault();
@@ -87,6 +104,33 @@ export default function Home() {
             A shared checklist for your move
           </h1>
         </div>
+
+        <section className="mt-8">
+          <h2 className="text-xs font-medium uppercase tracking-widest text-zinc-500">
+            Have a link?
+          </h2>
+          <form onSubmit={openPastedLink} className="mt-3 flex gap-2">
+            <input
+              type="text"
+              value={pasted}
+              onChange={(e) => setPasted(e.target.value)}
+              placeholder="Paste move URL or token"
+              className="flex-1 rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            />
+            <button
+              type="submit"
+              disabled={!pasted.trim()}
+              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+            >
+              Open
+            </button>
+          </form>
+          {pasteError && (
+            <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+              {pasteError}
+            </p>
+          )}
+        </section>
 
         {recents.length > 0 && (
           <section className="mt-8">
