@@ -36,29 +36,11 @@ export default function MovePage() {
     load();
   }, [load]);
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`tasks:${token}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tasks" },
-        () => {
-          load();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase, token, load]);
-
   async function addTask(e: React.FormEvent) {
     e.preventDefault();
     const title = newTitle.trim();
     if (!title) return;
 
-    // We need the move_id — one round-trip; cache would be nice but for now it's cheap.
     const { data: move, error: moveErr } = await supabase
       .from("moves")
       .select("id")
@@ -68,31 +50,55 @@ export default function MovePage() {
       return;
     }
 
-    const { error } = await supabase.from("tasks").insert({
-      move_id: move.id,
-      title,
-    });
+    const { data, error } = await supabase
+      .from("tasks")
+      .insert({ move_id: move.id, title })
+      .select();
     if (error) {
       setError(error.message);
       return;
     }
+    if (!data || data.length === 0) {
+      setError("Insert blocked — check that this link's token is valid.");
+      return;
+    }
     setNewTitle("");
-    // realtime will refresh; but call load() for immediate feedback if realtime lags.
     load();
   }
 
   async function toggle(task: Task) {
     const next = task.status === "todo" ? "done" : "todo";
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("tasks")
       .update({ status: next })
-      .eq("id", task.id);
-    if (error) setError(error.message);
+      .eq("id", task.id)
+      .select();
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      setError("Update blocked — RLS didn't see your share token.");
+      return;
+    }
+    load();
   }
 
   async function remove(task: Task) {
-    const { error } = await supabase.from("tasks").delete().eq("id", task.id);
-    if (error) setError(error.message);
+    const { data, error } = await supabase
+      .from("tasks")
+      .delete()
+      .eq("id", task.id)
+      .select();
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      setError("Delete blocked — RLS didn't see your share token.");
+      return;
+    }
+    load();
   }
 
   const todoCount = tasks.filter((t) => t.status === "todo").length;
