@@ -30,6 +30,7 @@ export default function MovePage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"origin" | "destination">("origin");
   const [expanded, setExpanded] = useState<Set<string>>(new Set([`origin:${GENERAL}`, `destination:${GENERAL}`]));
+  const [editing, setEditing] = useState<Task | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -139,6 +140,42 @@ export default function MovePage() {
     }
   }
 
+  async function saveEdit(patch: {
+    id: string;
+    title: string;
+    notes: string | null;
+    side: TaskSide;
+    room: string | null;
+    due_at: string | null;
+  }) {
+    const previous = tasks;
+    setTasks((prev) =>
+      prev.map((t) => (t.id === patch.id ? { ...t, ...patch } : t)),
+    );
+    setEditing(null);
+    setError(null);
+
+    const { data, error } = await supabase
+      .from("tasks")
+      .update({
+        title: patch.title,
+        notes: patch.notes,
+        side: patch.side,
+        room: patch.room,
+        due_at: patch.due_at,
+      })
+      .eq("id", patch.id)
+      .select()
+      .single<Task>();
+
+    if (error || !data) {
+      setTasks(previous);
+      setError(error?.message ?? "Save blocked — RLS didn't see your token.");
+      return;
+    }
+    setTasks((prev) => prev.map((t) => (t.id === data.id ? data : t)));
+  }
+
   function toggleRoom(key: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -217,6 +254,7 @@ export default function MovePage() {
               onAdd={(title) => addTask("origin", title)}
               onToggle={toggle}
               onDelete={remove}
+              onEdit={setEditing}
             />
           </div>
           <div className={activeTab === "destination" ? "" : "hidden md:block"}>
@@ -232,10 +270,19 @@ export default function MovePage() {
               onAdd={(title) => addTask("destination", title)}
               onToggle={toggle}
               onDelete={remove}
+              onEdit={setEditing}
             />
           </div>
         </div>
       </main>
+
+      {editing && (
+        <EditTaskModal
+          task={editing}
+          onCancel={() => setEditing(null)}
+          onSave={saveEdit}
+        />
+      )}
     </div>
   );
 }
@@ -280,6 +327,7 @@ function CountryPane({
   onAdd,
   onToggle,
   onDelete,
+  onEdit,
 }: {
   label: string;
   side: TaskSide;
@@ -292,6 +340,7 @@ function CountryPane({
   onAdd: (title: string) => Promise<void> | void;
   onToggle: (task: Task) => void;
   onDelete: (task: Task) => void;
+  onEdit: (task: Task) => void;
 }) {
   const [newTitle, setNewTitle] = useState("");
 
@@ -403,6 +452,7 @@ function CountryPane({
                         task={task}
                         onToggle={onToggle}
                         onDelete={onDelete}
+                        onEdit={onEdit}
                       />
                     ))}
                   </ul>
@@ -419,10 +469,12 @@ function TaskRow({
   task,
   onToggle,
   onDelete,
+  onEdit,
 }: {
   task: Task;
   onToggle: (t: Task) => void;
   onDelete: (t: Task) => void;
+  onEdit: (t: Task) => void;
 }) {
   return (
     <li className="flex items-center gap-3 border-b border-zinc-100 px-3 py-2 last:border-b-0 dark:border-zinc-800">
@@ -432,15 +484,17 @@ function TaskRow({
         onChange={() => onToggle(task)}
         className="h-5 w-5 accent-zinc-900 dark:accent-white"
       />
-      <span
+      <button
+        type="button"
+        onClick={() => onEdit(task)}
         className={
           task.status === "done"
-            ? "flex-1 text-sm text-zinc-400 line-through"
-            : "flex-1 text-sm text-zinc-900 dark:text-zinc-100"
+            ? "flex-1 text-left text-sm text-zinc-400 line-through hover:text-zinc-500"
+            : "flex-1 text-left text-sm text-zinc-900 hover:text-zinc-600 dark:text-zinc-100 dark:hover:text-zinc-300"
         }
       >
         {task.title}
-      </span>
+      </button>
       {task.due_at && task.status === "todo" && (
         <DueBadge dueAt={task.due_at} />
       )}
@@ -453,6 +507,184 @@ function TaskRow({
         ×
       </button>
     </li>
+  );
+}
+
+function EditTaskModal({
+  task,
+  onCancel,
+  onSave,
+}: {
+  task: Task;
+  onCancel: () => void;
+  onSave: (patch: {
+    id: string;
+    title: string;
+    notes: string | null;
+    side: TaskSide;
+    room: string | null;
+    due_at: string | null;
+  }) => Promise<void> | void;
+}) {
+  const [title, setTitle] = useState(task.title);
+  const [notes, setNotes] = useState(task.notes ?? "");
+  const [side, setSide] = useState<TaskSide>(task.side);
+  const [room, setRoom] = useState<string>(task.room ?? "");
+  const [dueDate, setDueDate] = useState<string>(
+    task.due_at ? task.due_at.slice(0, 10) : "",
+  );
+
+  const roomOptions = useMemo(() => {
+    if (side === "destination") return ISRAEL_ROOMS;
+    if (side === "origin") return USA_ROOMS;
+    return [...USA_ROOMS, ...ISRAEL_ROOMS.filter((r) => !USA_ROOMS.includes(r))];
+  }, [side]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    let due_at: string | null = null;
+    if (dueDate) {
+      const [y, m, d] = dueDate.split("-").map(Number);
+      due_at = new Date(y, m - 1, d, 9, 0, 0, 0).toISOString();
+    }
+    onSave({
+      id: task.id,
+      title: title.trim(),
+      notes: notes.trim() ? notes.trim() : null,
+      side,
+      room: room ? room : null,
+      due_at,
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 md:items-center md:p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onCancel}
+    >
+      <form
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={handleSubmit}
+        className="w-full max-w-md space-y-4 rounded-t-2xl bg-white p-5 shadow-xl dark:bg-zinc-950 md:rounded-2xl"
+      >
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+            Edit task
+          </h2>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="text-zinc-400 hover:text-zinc-600"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <label className="block">
+          <span className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            Title
+          </span>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+            className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+          />
+        </label>
+
+        <label className="block">
+          <span className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            Notes
+          </span>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+          />
+        </label>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              Country
+            </span>
+            <select
+              value={side}
+              onChange={(e) => {
+                const nextSide = e.target.value as TaskSide;
+                setSide(nextSide);
+                // If the current room isn't valid for the new side, clear it.
+                const validRooms =
+                  nextSide === "destination"
+                    ? ISRAEL_ROOMS
+                    : nextSide === "origin"
+                      ? USA_ROOMS
+                      : [...USA_ROOMS, ...ISRAEL_ROOMS];
+                if (room && !validRooms.includes(room)) setRoom("");
+              }}
+              className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            >
+              <option value="origin">USA</option>
+              <option value="destination">Israel</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              Room
+            </span>
+            <select
+              value={room}
+              onChange={(e) => setRoom(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            >
+              <option value="">General</option>
+              {roomOptions.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label className="block">
+          <span className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            Due date
+          </span>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+          />
+        </label>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!title.trim()}
+            className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+          >
+            Save
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
