@@ -11,24 +11,35 @@ export default function MovePage() {
   const supabase = useMemo(() => getMoveSupabase(token), [token]);
 
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [moveId, setMoveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
 
   const load = useCallback(async () => {
     setError(null);
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*")
-      .order("status", { ascending: true })
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: true });
+    const [moveRes, tasksRes] = await Promise.all([
+      supabase.from("moves").select("id").single<{ id: string }>(),
+      supabase
+        .from("tasks")
+        .select("*")
+        .order("status", { ascending: true })
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true }),
+    ]);
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setTasks(data as Task[]);
+    if (moveRes.error || !moveRes.data) {
+      setError(moveRes.error?.message ?? "Move not found for this link.");
+      setLoading(false);
+      return;
     }
+    if (tasksRes.error) {
+      setError(tasksRes.error.message);
+      setLoading(false);
+      return;
+    }
+    setMoveId(moveRes.data.id);
+    setTasks(tasksRes.data as Task[]);
     setLoading(false);
   }, [supabase]);
 
@@ -39,66 +50,77 @@ export default function MovePage() {
   async function addTask(e: React.FormEvent) {
     e.preventDefault();
     const title = newTitle.trim();
-    if (!title) return;
+    if (!title || !moveId) return;
 
-    const { data: move, error: moveErr } = await supabase
-      .from("moves")
-      .select("id")
-      .single<{ id: string }>();
-    if (moveErr || !move) {
-      setError(moveErr?.message ?? "Move not found for this link");
-      return;
-    }
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
+    const now = new Date().toISOString();
+    const optimistic: Task = {
+      id: tempId,
+      move_id: moveId,
+      title,
+      notes: null,
+      due_at: null,
+      category: "other",
+      status: "todo",
+      reminder_offsets_minutes: [],
+      sort_order: 0,
+      created_at: now,
+      updated_at: now,
+    };
+    setTasks((prev) => [...prev, optimistic]);
+    setNewTitle("");
+    setError(null);
 
     const { data, error } = await supabase
       .from("tasks")
-      .insert({ move_id: move.id, title })
-      .select();
-    if (error) {
-      setError(error.message);
+      .insert({ move_id: moveId, title })
+      .select()
+      .single<Task>();
+
+    if (error || !data) {
+      setTasks((prev) => prev.filter((t) => t.id !== tempId));
+      setNewTitle(title);
+      setError(error?.message ?? "Insert blocked — check that this link is valid.");
       return;
     }
-    if (!data || data.length === 0) {
-      setError("Insert blocked — check that this link's token is valid.");
-      return;
-    }
-    setNewTitle("");
-    load();
+    setTasks((prev) => prev.map((t) => (t.id === tempId ? data : t)));
   }
 
   async function toggle(task: Task) {
     const next = task.status === "todo" ? "done" : "todo";
+    const previous = tasks;
+    setTasks((prev) =>
+      prev.map((t) => (t.id === task.id ? { ...t, status: next } : t)),
+    );
+    setError(null);
+
     const { data, error } = await supabase
       .from("tasks")
       .update({ status: next })
       .eq("id", task.id)
       .select();
-    if (error) {
-      setError(error.message);
-      return;
+
+    if (error || !data || data.length === 0) {
+      setTasks(previous);
+      setError(error?.message ?? "Update blocked — RLS didn't see your token.");
     }
-    if (!data || data.length === 0) {
-      setError("Update blocked — RLS didn't see your share token.");
-      return;
-    }
-    load();
   }
 
   async function remove(task: Task) {
+    const previous = tasks;
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
+    setError(null);
+
     const { data, error } = await supabase
       .from("tasks")
       .delete()
       .eq("id", task.id)
       .select();
-    if (error) {
-      setError(error.message);
-      return;
+
+    if (error || !data || data.length === 0) {
+      setTasks(previous);
+      setError(error?.message ?? "Delete blocked — RLS didn't see your token.");
     }
-    if (!data || data.length === 0) {
-      setError("Delete blocked — RLS didn't see your share token.");
-      return;
-    }
-    load();
   }
 
   const todoCount = tasks.filter((t) => t.status === "todo").length;
@@ -128,7 +150,7 @@ export default function MovePage() {
           />
           <button
             type="submit"
-            disabled={!newTitle.trim()}
+            disabled={!newTitle.trim() || !moveId}
             className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-zinc-900"
           >
             Add
