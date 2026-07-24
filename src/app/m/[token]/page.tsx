@@ -11,6 +11,7 @@ import {
 } from "@/lib/template";
 import { rememberMove } from "@/lib/recent";
 import { QRCodeSVG } from "qrcode.react";
+import { InstallHint } from "@/app/install-hint";
 
 interface MoveHeader {
   id: string;
@@ -238,6 +239,8 @@ export default function MovePage() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+        <InstallHint />
+
         {error && (
           <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>
         )}
