@@ -10,6 +10,7 @@ import {
   formatDueLabel,
 } from "@/lib/template";
 import { rememberMove } from "@/lib/recent";
+import { QRCodeSVG } from "qrcode.react";
 
 interface MoveHeader {
   id: string;
@@ -32,6 +33,7 @@ export default function MovePage() {
   const [activeTab, setActiveTab] = useState<"origin" | "destination">("origin");
   const [expanded, setExpanded] = useState<Set<string>>(new Set([`origin:${GENERAL}`, `destination:${GENERAL}`]));
   const [editing, setEditing] = useState<Task | null>(null);
+  const [sharing, setSharing] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -214,11 +216,20 @@ export default function MovePage() {
                 {move ? `${move.origin_country} → ${move.destination_country}` : ""}
               </span>
             </h1>
-            {move?.move_date && (
-              <p className="text-sm text-zinc-500">
-                {formatCountdown(move.move_date)}
-              </p>
-            )}
+            <div className="flex items-center gap-3">
+              {move?.move_date && (
+                <p className="text-sm text-zinc-500">
+                  {formatCountdown(move.move_date)}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => setSharing(true)}
+                className="rounded-full border border-zinc-300 px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              >
+                Share
+              </button>
+            </div>
           </div>
           <p className="mt-1 text-xs text-zinc-500">
             {todoCount} to do · {doneCount} done
@@ -290,6 +301,100 @@ export default function MovePage() {
           onSave={saveEdit}
         />
       )}
+
+      {sharing && <ShareModal onClose={() => setSharing(false)} />}
+    </div>
+  );
+}
+
+function ShareModal({ onClose }: { onClose: () => void }) {
+  const [url, setUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+  const canNativeShare =
+    typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+  useEffect(() => {
+    setUrl(window.location.href);
+  }, []);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  async function nativeShare() {
+    try {
+      await navigator.share({ title: "Our move checklist", url });
+    } catch {
+      // User cancelled, or share not supported — fall back to copy.
+      copy();
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md space-y-4 rounded-t-2xl bg-white p-5 shadow-xl dark:bg-zinc-950 md:rounded-2xl"
+      >
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+            Share this move
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-zinc-400 hover:text-zinc-600"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <p className="text-xs text-zinc-500">
+          Anyone with this link can view and edit tasks. Send it to your
+          partner, or scan the QR code from another device.
+        </p>
+
+        <div className="flex justify-center rounded-lg bg-white p-4">
+          {url && (
+            <QRCodeSVG value={url} size={192} level="M" bgColor="#ffffff" fgColor="#000000" />
+          )}
+        </div>
+
+        <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-2 text-xs text-zinc-700 break-all dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
+          {url || "…"}
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={copy}
+            className="flex-1 rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            {copied ? "Copied ✓" : "Copy link"}
+          </button>
+          {canNativeShare && (
+            <button
+              type="button"
+              onClick={nativeShare}
+              className="flex-1 rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-zinc-900"
+            >
+              Share…
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
