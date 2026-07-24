@@ -9,6 +9,7 @@ import {
   ISRAEL_ROOMS,
   formatDueLabel,
 } from "@/lib/template";
+import { rememberMove } from "@/lib/recent";
 
 interface MoveHeader {
   id: string;
@@ -60,7 +61,13 @@ export default function MovePage() {
     setMove(moveRes.data);
     setTasks(tasksRes.data as Task[]);
     setLoading(false);
-  }, [supabase]);
+    rememberMove({
+      token,
+      move_date: moveRes.data.move_date,
+      origin_country: moveRes.data.origin_country,
+      destination_country: moveRes.data.destination_country,
+    });
+  }, [supabase, token]);
 
   useEffect(() => {
     load();
