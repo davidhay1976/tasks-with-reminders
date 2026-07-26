@@ -986,7 +986,7 @@ function DayBlock({
                   type="button"
                   onClick={() => onEdit(task)}
                   className={
-                    "flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900 " +
+                    "flex w-full cursor-pointer items-start gap-3 px-3 py-2 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900 " +
                     (inConflict ? "border-l-4 border-red-500" : "")
                   }
                 >
@@ -1018,6 +1018,12 @@ function DayBlock({
                       </p>
                     )}
                   </div>
+                  <span
+                    aria-hidden
+                    className="self-center text-xs text-zinc-400"
+                  >
+                    Edit ›
+                  </span>
                 </button>
               </li>
             );
