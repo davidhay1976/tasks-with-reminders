@@ -35,6 +35,7 @@ export default function MovePage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set([`origin:${GENERAL}`, `destination:${GENERAL}`]));
   const [editing, setEditing] = useState<Task | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [editingDate, setEditingDate] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -76,7 +77,7 @@ export default function MovePage() {
     load();
   }, [load]);
 
-  async function addTask(side: TaskSide, title: string) {
+  async function addTask(side: TaskSide, title: string, room: string | null) {
     if (!title.trim() || !move) return;
 
     const tempId = `temp-${Date.now()}-${Math.random()}`;
@@ -90,7 +91,7 @@ export default function MovePage() {
       category: "other",
       status: "todo",
       side,
-      room: null,
+      room,
       reminder_offsets_minutes: [],
       sort_order: 0,
       created_at: now,
@@ -101,7 +102,7 @@ export default function MovePage() {
 
     const { data, error } = await supabase
       .from("tasks")
-      .insert({ move_id: move.id, title, side })
+      .insert({ move_id: move.id, title, side, room })
       .select()
       .single<Task>();
 
@@ -111,6 +112,28 @@ export default function MovePage() {
       return;
     }
     setTasks((prev) => prev.map((t) => (t.id === tempId ? data : t)));
+  }
+
+  async function saveMoveDate(newDate: string) {
+    if (!move) return;
+    const previous = move;
+    setMove({ ...move, move_date: newDate });
+    setError(null);
+
+    const { data, error } = await supabase
+      .from("moves")
+      .update({ move_date: newDate })
+      .eq("id", move.id)
+      .select()
+      .single<MoveHeader>();
+
+    if (error || !data) {
+      setMove(previous);
+      setError(error?.message ?? "Couldn't update the move date.");
+      return;
+    }
+    setMove(data);
+    setEditingDate(false);
   }
 
   async function toggle(task: Task) {
@@ -208,11 +231,19 @@ export default function MovePage() {
         <div className="mx-auto w-full max-w-6xl">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-              {move?.move_date ? (
-                <>Moving {formatMoveDate(move.move_date)}</>
-              ) : (
-                "Your move"
-              )}
+              <button
+                type="button"
+                onClick={() => setEditingDate(true)}
+                disabled={!move}
+                className="underline decoration-dotted underline-offset-4 hover:text-zinc-700 disabled:no-underline dark:hover:text-zinc-300"
+                title="Change move date"
+              >
+                {move?.move_date ? (
+                  <>Moving {formatMoveDate(move.move_date)}</>
+                ) : (
+                  "Set move date"
+                )}
+              </button>
               <span className="ml-2 text-sm font-normal text-zinc-500">
                 {move ? `${move.origin_country} → ${move.destination_country}` : ""}
               </span>
@@ -272,7 +303,7 @@ export default function MovePage() {
               expanded={expanded}
               onToggleRoom={(room) => toggleRoom(`origin:${room}`)}
               expandedKey={(room) => `origin:${room}`}
-              onAdd={(title) => addTask("origin", title)}
+              onAdd={(title, room) => addTask("origin", title, room)}
               onToggle={toggle}
               onDelete={remove}
               onEdit={setEditing}
@@ -288,7 +319,7 @@ export default function MovePage() {
               expanded={expanded}
               onToggleRoom={(room) => toggleRoom(`destination:${room}`)}
               expandedKey={(room) => `destination:${room}`}
-              onAdd={(title) => addTask("destination", title)}
+              onAdd={(title, room) => addTask("destination", title, room)}
               onToggle={toggle}
               onDelete={remove}
               onEdit={setEditing}
@@ -306,6 +337,124 @@ export default function MovePage() {
       )}
 
       {sharing && <ShareModal onClose={() => setSharing(false)} />}
+
+      {editingDate && move && (
+        <EditMoveDateModal
+          currentDate={move.move_date}
+          onCancel={() => setEditingDate(false)}
+          onSave={saveMoveDate}
+        />
+      )}
+    </div>
+  );
+}
+
+function RoomAddInput({
+  room,
+  onAdd,
+}: {
+  room: string;
+  onAdd: (title: string) => Promise<void> | void;
+}) {
+  const [value, setValue] = useState("");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const title = value.trim();
+    if (!title) return;
+    setValue("");
+    await onAdd(title);
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="border-t border-zinc-100 px-3 py-2 dark:border-zinc-800"
+    >
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={`+ Add to ${room}…`}
+        className="w-full bg-transparent text-sm text-zinc-800 placeholder:text-zinc-400 outline-none dark:text-zinc-200"
+      />
+    </form>
+  );
+}
+
+function EditMoveDateModal({
+  currentDate,
+  onCancel,
+  onSave,
+}: {
+  currentDate: string | null;
+  onCancel: () => void;
+  onSave: (newDate: string) => Promise<void> | void;
+}) {
+  const [date, setDate] = useState(currentDate ?? "");
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!date) return;
+    onSave(date);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onCancel}
+    >
+      <form
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={submit}
+        className="w-full max-w-sm space-y-4 rounded-t-2xl bg-white p-5 shadow-xl dark:bg-zinc-950 md:rounded-2xl"
+      >
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+            Move date
+          </h2>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="text-zinc-400 hover:text-zinc-600"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <input
+          type="date"
+          required
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+        />
+
+        <p className="text-xs text-zinc-500">
+          Existing task due dates won&rsquo;t shift automatically. Edit tasks
+          individually if you want to move them.
+        </p>
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!date || date === currentDate}
+            className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+          >
+            Save
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -452,7 +601,7 @@ function CountryPane({
   expanded: Set<string>;
   onToggleRoom: (room: string) => void;
   expandedKey: (room: string) => string;
-  onAdd: (title: string) => Promise<void> | void;
+  onAdd: (title: string, room: string | null) => Promise<void> | void;
   onToggle: (task: Task) => void;
   onDelete: (task: Task) => void;
   onEdit: (task: Task) => void;
@@ -491,7 +640,7 @@ function CountryPane({
     const title = newTitle.trim();
     if (!title) return;
     setNewTitle("");
-    await onAdd(title);
+    await onAdd(title, null);
   }
 
   return (
@@ -560,17 +709,25 @@ function CountryPane({
                   <span className="text-zinc-400">{isOpen ? "−" : "+"}</span>
                 </button>
                 {isOpen && (
-                  <ul className="border-t border-zinc-200 dark:border-zinc-800">
-                    {items.map((task) => (
-                      <TaskRow
-                        key={task.id}
-                        task={task}
-                        onToggle={onToggle}
-                        onDelete={onDelete}
-                        onEdit={onEdit}
+                  <>
+                    <ul className="border-t border-zinc-200 dark:border-zinc-800">
+                      {items.map((task) => (
+                        <TaskRow
+                          key={task.id}
+                          task={task}
+                          onToggle={onToggle}
+                          onDelete={onDelete}
+                          onEdit={onEdit}
+                        />
+                      ))}
+                    </ul>
+                    {room !== GENERAL && (
+                      <RoomAddInput
+                        room={room}
+                        onAdd={(title) => onAdd(title, room)}
                       />
-                    ))}
-                  </ul>
+                    )}
+                  </>
                 )}
               </div>
             );
