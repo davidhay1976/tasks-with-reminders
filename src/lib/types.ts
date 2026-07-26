@@ -20,6 +20,9 @@ export interface Task {
   status: TaskStatus;
   side: TaskSide;
   room: string | null;
+  starts_at: string | null;
+  duration_minutes: number | null;
+  contact: string | null;
   reminder_offsets_minutes: number[];
   sort_order: number;
   created_at: string;

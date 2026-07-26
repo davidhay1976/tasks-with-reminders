@@ -36,6 +36,7 @@ export default function MovePage() {
   const [editing, setEditing] = useState<Task | null>(null);
   const [sharing, setSharing] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
+  const [view, setView] = useState<"list" | "calendar">("list");
 
   const load = useCallback(async () => {
     setError(null);
@@ -92,6 +93,9 @@ export default function MovePage() {
       status: "todo",
       side,
       room,
+      starts_at: null,
+      duration_minutes: null,
+      contact: null,
       reminder_offsets_minutes: [],
       sort_order: 0,
       created_at: now,
@@ -180,6 +184,9 @@ export default function MovePage() {
     side: TaskSide;
     room: string | null;
     due_at: string | null;
+    starts_at: string | null;
+    duration_minutes: number | null;
+    contact: string | null;
   }) {
     const previous = tasks;
     setTasks((prev) =>
@@ -196,6 +203,9 @@ export default function MovePage() {
         side: patch.side,
         room: patch.room,
         due_at: patch.due_at,
+        starts_at: patch.starts_at,
+        duration_minutes: patch.duration_minutes,
+        contact: patch.contact,
       })
       .eq("id", patch.id)
       .select()
@@ -254,6 +264,30 @@ export default function MovePage() {
                   {formatCountdown(move.move_date)}
                 </p>
               )}
+              <div className="flex rounded-full border border-zinc-300 p-0.5 text-xs font-medium dark:border-zinc-700">
+                <button
+                  type="button"
+                  onClick={() => setView("list")}
+                  className={
+                    view === "list"
+                      ? "rounded-full bg-zinc-900 px-3 py-1 text-white dark:bg-white dark:text-zinc-900"
+                      : "px-3 py-1 text-zinc-600 dark:text-zinc-400"
+                  }
+                >
+                  List
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView("calendar")}
+                  className={
+                    view === "calendar"
+                      ? "rounded-full bg-zinc-900 px-3 py-1 text-white dark:bg-white dark:text-zinc-900"
+                      : "px-3 py-1 text-zinc-600 dark:text-zinc-400"
+                  }
+                >
+                  Calendar
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => setSharing(true)}
@@ -276,56 +310,18 @@ export default function MovePage() {
           <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>
         )}
 
-        {/* Tabs — mobile only */}
-        <div className="mb-4 flex gap-2 md:hidden">
-          <TabButton
-            active={activeTab === "origin"}
-            label={move?.origin_country ?? "USA"}
-            count={originTasks.filter((t) => t.status === "todo").length}
-            onClick={() => setActiveTab("origin")}
+        {view === "calendar" ? (
+          <CalendarView tasks={tasks} onEdit={setEditing} />
+        ) : (
+          <ListView
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            originCountry={move?.origin_country}
+            destinationCountry={move?.destination_country}
+            originTasks={originTasks}
+            destinationTasks={destinationTasks}
           />
-          <TabButton
-            active={activeTab === "destination"}
-            label={move?.destination_country ?? "Israel"}
-            count={destinationTasks.filter((t) => t.status === "todo").length}
-            onClick={() => setActiveTab("destination")}
-          />
-        </div>
-
-        <div className="md:grid md:grid-cols-2 md:gap-6">
-          <div className={activeTab === "origin" ? "" : "hidden md:block"}>
-            <CountryPane
-              label={move?.origin_country ?? "USA"}
-              side="origin"
-              tasks={originTasks}
-              rooms={USA_ROOMS}
-              loading={loading}
-              expanded={expanded}
-              onToggleRoom={(room) => toggleRoom(`origin:${room}`)}
-              expandedKey={(room) => `origin:${room}`}
-              onAdd={(title, room) => addTask("origin", title, room)}
-              onToggle={toggle}
-              onDelete={remove}
-              onEdit={setEditing}
-            />
-          </div>
-          <div className={activeTab === "destination" ? "" : "hidden md:block"}>
-            <CountryPane
-              label={move?.destination_country ?? "Israel"}
-              side="destination"
-              tasks={destinationTasks}
-              rooms={ISRAEL_ROOMS}
-              loading={loading}
-              expanded={expanded}
-              onToggleRoom={(room) => toggleRoom(`destination:${room}`)}
-              expandedKey={(room) => `destination:${room}`}
-              onAdd={(title, room) => addTask("destination", title, room)}
-              onToggle={toggle}
-              onDelete={remove}
-              onEdit={setEditing}
-            />
-          </div>
-        </div>
+        )}
       </main>
 
       {editing && (
@@ -347,6 +343,76 @@ export default function MovePage() {
       )}
     </div>
   );
+
+  function ListView({
+    activeTab,
+    setActiveTab,
+    originCountry,
+    destinationCountry,
+    originTasks,
+    destinationTasks,
+  }: {
+    activeTab: "origin" | "destination";
+    setActiveTab: (t: "origin" | "destination") => void;
+    originCountry: string | undefined;
+    destinationCountry: string | undefined;
+    originTasks: Task[];
+    destinationTasks: Task[];
+  }) {
+    return (
+      <>
+        <div className="mb-4 flex gap-2 md:hidden">
+          <TabButton
+            active={activeTab === "origin"}
+            label={originCountry ?? "USA"}
+            count={originTasks.filter((t) => t.status === "todo").length}
+            onClick={() => setActiveTab("origin")}
+          />
+          <TabButton
+            active={activeTab === "destination"}
+            label={destinationCountry ?? "Israel"}
+            count={destinationTasks.filter((t) => t.status === "todo").length}
+            onClick={() => setActiveTab("destination")}
+          />
+        </div>
+
+        <div className="md:grid md:grid-cols-2 md:gap-6">
+          <div className={activeTab === "origin" ? "" : "hidden md:block"}>
+            <CountryPane
+              label={originCountry ?? "USA"}
+              side="origin"
+              tasks={originTasks}
+              rooms={USA_ROOMS}
+              loading={loading}
+              expanded={expanded}
+              onToggleRoom={(room) => toggleRoom(`origin:${room}`)}
+              expandedKey={(room) => `origin:${room}`}
+              onAdd={(title, room) => addTask("origin", title, room)}
+              onToggle={toggle}
+              onDelete={remove}
+              onEdit={setEditing}
+            />
+          </div>
+          <div className={activeTab === "destination" ? "" : "hidden md:block"}>
+            <CountryPane
+              label={destinationCountry ?? "Israel"}
+              side="destination"
+              tasks={destinationTasks}
+              rooms={ISRAEL_ROOMS}
+              loading={loading}
+              expanded={expanded}
+              onToggleRoom={(room) => toggleRoom(`destination:${room}`)}
+              expandedKey={(room) => `destination:${room}`}
+              onAdd={(title, room) => addTask("destination", title, room)}
+              onToggle={toggle}
+              onDelete={remove}
+              onEdit={setEditing}
+            />
+          </div>
+        </div>
+      </>
+    );
+  }
 }
 
 function RoomAddInput({
@@ -737,6 +803,170 @@ function CountryPane({
   );
 }
 
+function CalendarView({
+  tasks,
+  onEdit,
+}: {
+  tasks: Task[];
+  onEdit: (t: Task) => void;
+}) {
+  const DAYS = 14;
+
+  // Build 14 days starting from today, each with its scheduled tasks sorted by start.
+  const days = useMemo(() => {
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const result: { date: Date; items: Task[] }[] = [];
+    for (let i = 0; i < DAYS; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      result.push({ date: d, items: [] });
+    }
+    for (const t of tasks) {
+      if (!t.starts_at) continue;
+      const start_ = new Date(t.starts_at);
+      const dayOffset = Math.round(
+        (new Date(start_.getFullYear(), start_.getMonth(), start_.getDate()).getTime() -
+          start.getTime()) /
+          (1000 * 60 * 60 * 24),
+      );
+      if (dayOffset >= 0 && dayOffset < DAYS) {
+        result[dayOffset].items.push(t);
+      }
+    }
+    for (const day of result) {
+      day.items.sort((a, b) => a.starts_at!.localeCompare(b.starts_at!));
+    }
+    return result;
+  }, [tasks]);
+
+  const anyScheduled = days.some((d) => d.items.length > 0);
+
+  return (
+    <div className="space-y-4">
+      {!anyScheduled && (
+        <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700">
+          No scheduled appointments yet. Open any task and set its Start time to
+          see it here.
+        </p>
+      )}
+      {days.map((day) => (
+        <DayBlock key={day.date.toISOString()} date={day.date} items={day.items} onEdit={onEdit} />
+      ))}
+    </div>
+  );
+}
+
+function DayBlock({
+  date,
+  items,
+  onEdit,
+}: {
+  date: Date;
+  items: Task[];
+  onEdit: (t: Task) => void;
+}) {
+  const isToday = new Date().toDateString() === date.toDateString();
+  const dayLabel = date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+
+  return (
+    <section
+      className={
+        "overflow-hidden rounded-lg border bg-white dark:bg-zinc-950 " +
+        (isToday
+          ? "border-indigo-400 dark:border-indigo-500"
+          : "border-zinc-200 dark:border-zinc-800")
+      }
+    >
+      <header className="flex items-baseline justify-between border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          {isToday ? "Today · " : ""}
+          {dayLabel}
+        </h3>
+        <p className="text-xs text-zinc-500">
+          {items.length === 0
+            ? "free"
+            : items.length === 1
+              ? "1 appointment"
+              : `${items.length} appointments`}
+        </p>
+      </header>
+      {items.length > 0 && (
+        <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          {items.map((task, i) => {
+            const end = task.duration_minutes
+              ? new Date(
+                  new Date(task.starts_at!).getTime() + task.duration_minutes * 60_000,
+                )
+              : null;
+            const conflictsWithNext =
+              end && items[i + 1]
+                ? new Date(items[i + 1].starts_at!).getTime() < end.getTime()
+                : false;
+            const conflictsWithPrev =
+              i > 0 && items[i - 1].duration_minutes
+                ? new Date(items[i - 1].starts_at!).getTime() +
+                    items[i - 1].duration_minutes! * 60_000 >
+                  new Date(task.starts_at!).getTime()
+                : false;
+            const inConflict = conflictsWithNext || conflictsWithPrev;
+            const startLabel = new Date(task.starts_at!).toLocaleTimeString(
+              undefined,
+              { hour: "2-digit", minute: "2-digit" },
+            );
+            const endLabel = end
+              ? end.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+              : null;
+            return (
+              <li key={task.id}>
+                <button
+                  type="button"
+                  onClick={() => onEdit(task)}
+                  className={
+                    "flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900 " +
+                    (inConflict ? "border-l-4 border-red-500" : "")
+                  }
+                >
+                  <div className="min-w-[68px] text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                    {startLabel}
+                    {endLabel && <div className="text-zinc-400">–{endLabel}</div>}
+                  </div>
+                  <div className="flex-1">
+                    <p
+                      className={
+                        task.status === "done"
+                          ? "text-sm text-zinc-400 line-through"
+                          : "text-sm text-zinc-900 dark:text-zinc-100"
+                      }
+                    >
+                      {task.title}
+                    </p>
+                    {task.contact && (
+                      <p className="text-xs text-zinc-500">{task.contact}</p>
+                    )}
+                    {task.room && (
+                      <p className="text-xs text-zinc-400">{task.room}</p>
+                    )}
+                    {inConflict && (
+                      <p className="text-xs text-red-600 dark:text-red-400">
+                        Overlaps another appointment
+                      </p>
+                    )}
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function TaskRow({
   task,
   onToggle,
@@ -767,8 +997,16 @@ function TaskRow({
       >
         {task.title}
       </button>
-      {task.due_at && task.status === "todo" && (
-        <DueBadge dueAt={task.due_at} />
+      {task.status === "todo" && (
+        <>
+          {task.starts_at ? (
+            <span className="text-xs text-indigo-600 dark:text-indigo-400">
+              {formatSchedule(task.starts_at, task.duration_minutes)}
+            </span>
+          ) : task.due_at ? (
+            <DueBadge dueAt={task.due_at} />
+          ) : null}
+        </>
       )}
       <button
         type="button"
@@ -796,6 +1034,9 @@ function EditTaskModal({
     side: TaskSide;
     room: string | null;
     due_at: string | null;
+    starts_at: string | null;
+    duration_minutes: number | null;
+    contact: string | null;
   }) => Promise<void> | void;
 }) {
   const [title, setTitle] = useState(task.title);
@@ -805,6 +1046,13 @@ function EditTaskModal({
   const [dueDate, setDueDate] = useState<string>(
     task.due_at ? task.due_at.slice(0, 10) : "",
   );
+  const [startsAt, setStartsAt] = useState<string>(
+    task.starts_at ? toLocalDateTimeInput(task.starts_at) : "",
+  );
+  const [duration, setDuration] = useState<string>(
+    task.duration_minutes != null ? String(task.duration_minutes) : "",
+  );
+  const [contact, setContact] = useState<string>(task.contact ?? "");
 
   const roomOptions = useMemo(() => {
     if (side === "destination") return ISRAEL_ROOMS;
@@ -820,6 +1068,9 @@ function EditTaskModal({
       const [y, m, d] = dueDate.split("-").map(Number);
       due_at = new Date(y, m - 1, d, 9, 0, 0, 0).toISOString();
     }
+    const starts_at = startsAt ? new Date(startsAt).toISOString() : null;
+    const dur = duration.trim() ? Number.parseInt(duration, 10) : NaN;
+    const duration_minutes = starts_at && Number.isFinite(dur) && dur > 0 ? dur : null;
     onSave({
       id: task.id,
       title: title.trim(),
@@ -827,6 +1078,9 @@ function EditTaskModal({
       side,
       room: room ? room : null,
       due_at,
+      starts_at,
+      duration_minutes,
+      contact: contact.trim() ? contact.trim() : null,
     });
   }
 
@@ -939,6 +1193,51 @@ function EditTaskModal({
           />
         </label>
 
+        <div className="rounded-lg border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Schedule (optional)
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <label className="col-span-2 block">
+              <span className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                Starts at
+              </span>
+              <input
+                type="datetime-local"
+                value={startsAt}
+                onChange={(e) => setStartsAt(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                Duration (min)
+              </span>
+              <input
+                type="number"
+                min={5}
+                step={5}
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                placeholder="60"
+                className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                Contact
+              </span>
+              <input
+                type="text"
+                value={contact}
+                onChange={(e) => setContact(e.target.value)}
+                placeholder="Name / phone"
+                className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+              />
+            </label>
+          </div>
+        </div>
+
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
@@ -980,6 +1279,22 @@ function formatMoveDate(moveDate: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function toLocalDateTimeInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatSchedule(startsAt: string, durationMinutes: number | null): string {
+  const start = new Date(startsAt);
+  const dayLabel = start.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const startLabel = start.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  if (!durationMinutes || durationMinutes <= 0) return `${dayLabel} · ${startLabel}`;
+  const end = new Date(start.getTime() + durationMinutes * 60_000);
+  const endLabel = end.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return `${dayLabel} · ${startLabel}–${endLabel}`;
 }
 
 function formatCountdown(moveDate: string): string {
