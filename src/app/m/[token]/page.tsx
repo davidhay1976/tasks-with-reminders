@@ -375,21 +375,29 @@ export default function MovePage() {
           <TabButton
             active={activeTab === "origin"}
             label={originCountry ?? "USA"}
+            flag="🇺🇸"
             count={originTasks.filter((t) => t.status === "todo").length}
             onClick={() => setActiveTab("origin")}
           />
           <TabButton
             active={activeTab === "destination"}
             label={destinationCountry ?? "Israel"}
+            flag="🇮🇱"
             count={destinationTasks.filter((t) => t.status === "todo").length}
             onClick={() => setActiveTab("destination")}
           />
         </div>
 
         <div className="md:grid md:grid-cols-2 md:gap-6">
-          <div className={activeTab === "origin" ? "" : "hidden md:block"}>
+          <div
+            className={
+              (activeTab === "origin" ? "" : "hidden md:block ") +
+              "rounded-lg bg-red-50/60 p-3 dark:bg-red-950/20"
+            }
+          >
             <CountryPane
               label={originCountry ?? "USA"}
+              flag="🇺🇸"
               side="origin"
               tasks={originTasks}
               rooms={USA_ROOMS}
@@ -403,9 +411,15 @@ export default function MovePage() {
               onEdit={setEditing}
             />
           </div>
-          <div className={activeTab === "destination" ? "" : "hidden md:block"}>
+          <div
+            className={
+              (activeTab === "destination" ? "" : "hidden md:block ") +
+              "rounded-lg bg-sky-50/60 p-3 dark:bg-sky-950/20"
+            }
+          >
             <CountryPane
               label={destinationCountry ?? "Israel"}
+              flag="🇮🇱"
               side="destination"
               tasks={destinationTasks}
               rooms={ISRAEL_ROOMS}
@@ -632,11 +646,13 @@ function ShareModal({ onClose }: { onClose: () => void }) {
 function TabButton({
   active,
   label,
+  flag,
   count,
   onClick,
 }: {
   active: boolean;
   label: string;
+  flag: string;
   count: number;
   onClick: () => void;
 }) {
@@ -650,6 +666,7 @@ function TabButton({
           : "flex-1 rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
       }
     >
+      <span className="mr-1">{flag}</span>
       {label} <span className="opacity-60">· {count}</span>
     </button>
   );
@@ -657,6 +674,7 @@ function TabButton({
 
 function CountryPane({
   label,
+  flag,
   side,
   tasks,
   rooms,
@@ -670,6 +688,7 @@ function CountryPane({
   onEdit,
 }: {
   label: string;
+  flag: string;
   side: TaskSide;
   tasks: Task[];
   rooms: string[];
@@ -683,6 +702,8 @@ function CountryPane({
   onEdit: (task: Task) => void;
 }) {
   const [newTitle, setNewTitle] = useState("");
+  const [customRooms, setCustomRooms] = useState<string[]>([]);
+  const [newSection, setNewSection] = useState("");
 
   // Group tasks by room label. Include GENERAL for room=null tasks.
   const byRoom = useMemo(() => {
@@ -696,20 +717,20 @@ function CountryPane({
     return map;
   }, [tasks]);
 
-  // Order: GENERAL first, then predefined rooms in order, then any extras alphabetically.
+  // Order: GENERAL first, then predefined rooms in order, then any extras
+  // (rooms found in tasks OR added locally via "+ New section") alphabetically.
   const orderedRooms = useMemo(() => {
     const inTasks = new Set(byRoom.keys());
     const ordered: string[] = [GENERAL];
     for (const room of rooms) {
       if (inTasks.has(room)) ordered.push(room);
     }
-    // Extras: rooms in tasks that aren't General and aren't in the predefined list
-    const extras = Array.from(inTasks).filter(
-      (r) => r !== GENERAL && !rooms.includes(r),
-    );
-    extras.sort();
+    const combined = new Set<string>();
+    for (const r of inTasks) if (r !== GENERAL && !rooms.includes(r)) combined.add(r);
+    for (const r of customRooms) if (r !== GENERAL && !rooms.includes(r)) combined.add(r);
+    const extras = Array.from(combined).sort();
     return [...ordered, ...extras];
-  }, [byRoom, rooms]);
+  }, [byRoom, rooms, customRooms]);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -719,10 +740,21 @@ function CountryPane({
     await onAdd(title, null);
   }
 
+  function handleNewSection(e: React.FormEvent) {
+    e.preventDefault();
+    const name = newSection.trim();
+    if (!name) return;
+    setCustomRooms((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setNewSection("");
+    // Auto-expand the new section so the "+ Add to X" input is visible.
+    if (!expanded.has(expandedKey(name))) onToggleRoom(name);
+  }
+
   return (
     <section aria-label={label}>
       <div className="mb-3 hidden items-baseline justify-between md:flex">
         <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          <span className="mr-1">{flag}</span>
           {label}
         </h2>
         <p className="text-xs text-zinc-500">
@@ -808,6 +840,23 @@ function CountryPane({
               </div>
             );
           })}
+
+        <form onSubmit={handleNewSection} className="flex gap-2 pt-2">
+          <input
+            type="text"
+            value={newSection}
+            onChange={(e) => setNewSection(e.target.value)}
+            placeholder="+ New section (e.g. need to buy)"
+            className="flex-1 rounded-full border border-dashed border-zinc-300 bg-transparent px-4 py-2 text-sm text-zinc-700 placeholder:text-zinc-400 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:text-zinc-300"
+          />
+          <button
+            type="submit"
+            disabled={!newSection.trim()}
+            className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            Add
+          </button>
+        </form>
       </div>
     </section>
   );
@@ -946,13 +995,15 @@ function DayBlock({
                     {endLabel && <div className="text-zinc-400">–{endLabel}</div>}
                   </div>
                   <div className="flex-1">
-                    <p
-                      className={
-                        task.status === "done"
-                          ? "text-sm text-zinc-400 line-through"
-                          : "text-sm text-zinc-900 dark:text-zinc-100"
-                      }
-                    >
+                    <p className="text-sm text-zinc-900 dark:text-zinc-100">
+                      {task.status === "done" && (
+                        <span
+                          aria-label="done"
+                          className="mr-1 text-emerald-600 dark:text-emerald-400"
+                        >
+                          ✓
+                        </span>
+                      )}
                       {task.title}
                     </p>
                     {task.contact && (
@@ -1007,11 +1058,6 @@ function TaskRow({
       >
         {task.title}
       </button>
-      {task.category && task.category !== "other" && (
-        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-          {task.category}
-        </span>
-      )}
       {task.status === "todo" && (
         <>
           {task.starts_at ? (
@@ -1184,20 +1230,21 @@ function EditTaskModal({
 
           <label className="block">
             <span className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-              Room
+              Room / section
             </span>
-            <select
+            <input
+              type="text"
               value={room}
               onChange={(e) => setRoom(e.target.value)}
+              list={`rooms-${task.id}`}
+              placeholder="General"
               className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-            >
-              <option value="">General</option>
+            />
+            <datalist id={`rooms-${task.id}`}>
               {roomOptions.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
+                <option key={r} value={r} />
               ))}
-            </select>
+            </datalist>
           </label>
         </div>
 
