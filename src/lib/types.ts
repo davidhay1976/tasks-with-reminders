@@ -1,10 +1,16 @@
-export type TaskCategory =
-  | "packing"
-  | "admin"
-  | "utilities"
-  | "logistics"
-  | "post_move"
-  | "other";
+// Free-form after migration 0004. The common values below stay useful as
+// suggestions and are what the template ships with, but any string works.
+export type TaskCategory = string;
+
+export const COMMON_CATEGORIES = [
+  "packing",
+  "admin",
+  "utilities",
+  "logistics",
+  "post_move",
+  "need to buy",
+  "other",
+] as const;
 
 export type TaskStatus = "todo" | "done";
 

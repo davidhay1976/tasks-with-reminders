@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { getMoveSupabase } from "@/lib/supabase";
 import type { Task, TaskSide } from "@/lib/types";
+import { COMMON_CATEGORIES } from "@/lib/types";
 import {
   USA_ROOMS,
   ISRAEL_ROOMS,
@@ -183,6 +184,7 @@ export default function MovePage() {
     notes: string | null;
     side: TaskSide;
     room: string | null;
+    category: string;
     due_at: string | null;
     starts_at: string | null;
     duration_minutes: number | null;
@@ -202,6 +204,7 @@ export default function MovePage() {
         notes: patch.notes,
         side: patch.side,
         room: patch.room,
+        category: patch.category,
         due_at: patch.due_at,
         starts_at: patch.starts_at,
         duration_minutes: patch.duration_minutes,
@@ -234,6 +237,12 @@ export default function MovePage() {
 
   const todoCount = tasks.filter((t) => t.status === "todo").length;
   const doneCount = tasks.filter((t) => t.status === "done").length;
+
+  const knownCategories = useMemo(() => {
+    const set = new Set<string>(COMMON_CATEGORIES);
+    for (const t of tasks) if (t.category) set.add(t.category);
+    return Array.from(set).sort();
+  }, [tasks]);
 
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 dark:bg-black">
@@ -327,6 +336,7 @@ export default function MovePage() {
       {editing && (
         <EditTaskModal
           task={editing}
+          knownCategories={knownCategories}
           onCancel={() => setEditing(null)}
           onSave={saveEdit}
         />
@@ -997,6 +1007,11 @@ function TaskRow({
       >
         {task.title}
       </button>
+      {task.category && task.category !== "other" && (
+        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+          {task.category}
+        </span>
+      )}
       {task.status === "todo" && (
         <>
           {task.starts_at ? (
@@ -1022,10 +1037,12 @@ function TaskRow({
 
 function EditTaskModal({
   task,
+  knownCategories,
   onCancel,
   onSave,
 }: {
   task: Task;
+  knownCategories: string[];
   onCancel: () => void;
   onSave: (patch: {
     id: string;
@@ -1033,6 +1050,7 @@ function EditTaskModal({
     notes: string | null;
     side: TaskSide;
     room: string | null;
+    category: string;
     due_at: string | null;
     starts_at: string | null;
     duration_minutes: number | null;
@@ -1043,6 +1061,7 @@ function EditTaskModal({
   const [notes, setNotes] = useState(task.notes ?? "");
   const [side, setSide] = useState<TaskSide>(task.side);
   const [room, setRoom] = useState<string>(task.room ?? "");
+  const [category, setCategory] = useState<string>(task.category || "other");
   const [dueDate, setDueDate] = useState<string>(
     task.due_at ? task.due_at.slice(0, 10) : "",
   );
@@ -1077,6 +1096,7 @@ function EditTaskModal({
       notes: notes.trim() ? notes.trim() : null,
       side,
       room: room ? room : null,
+      category: category.trim() || "other",
       due_at,
       starts_at,
       duration_minutes,
@@ -1180,6 +1200,25 @@ function EditTaskModal({
             </select>
           </label>
         </div>
+
+        <label className="block">
+          <span className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            Category
+          </span>
+          <input
+            type="text"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            list={`categories-${task.id}`}
+            placeholder="e.g. need to buy"
+            className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+          />
+          <datalist id={`categories-${task.id}`}>
+            {knownCategories.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </label>
 
         <label className="block">
           <span className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
