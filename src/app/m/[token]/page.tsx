@@ -13,6 +13,7 @@ import {
 import { rememberMove } from "@/lib/recent";
 import { QRCodeSVG } from "qrcode.react";
 import { InstallHint } from "@/app/install-hint";
+import { BagsView } from "./bags-view";
 
 interface MoveHeader {
   id: string;
@@ -37,7 +38,7 @@ export default function MovePage() {
   const [editing, setEditing] = useState<Task | null>(null);
   const [sharing, setSharing] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
-  const [view, setView] = useState<"list" | "calendar">("list");
+  const [view, setView] = useState<"list" | "calendar" | "bags">("list");
 
   const load = useCallback(async () => {
     setError(null);
@@ -296,6 +297,17 @@ export default function MovePage() {
                 >
                   Calendar
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setView("bags")}
+                  className={
+                    view === "bags"
+                      ? "rounded-full bg-zinc-900 px-3 py-1 text-white dark:bg-white dark:text-zinc-900"
+                      : "px-3 py-1 text-zinc-600 dark:text-zinc-400"
+                  }
+                >
+                  Bags
+                </button>
               </div>
               <button
                 type="button"
@@ -321,6 +333,8 @@ export default function MovePage() {
 
         {view === "calendar" ? (
           <CalendarView tasks={tasks} onEdit={setEditing} />
+        ) : view === "bags" ? (
+          move ? <BagsView moveId={move.id} supabase={supabase} /> : null
         ) : (
           <ListView
             activeTab={activeTab}
