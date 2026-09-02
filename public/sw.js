@@ -1,4 +1,4 @@
-const CACHE = "app-shell-v1";
+const CACHE = "app-shell-v2";
 const SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -18,7 +18,23 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
+
+  // Don't touch cross-origin (Supabase, fonts, etc). Letting these fall
+  // through means a network failure surfaces on the caller, not as an
+  // unhandled respondWith rejection.
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+
   event.respondWith(
-    caches.match(req).then((cached) => cached ?? fetch(req)),
+    caches.match(req).then((cached) => {
+      if (cached) return cached;
+      return fetch(req).catch(
+        () =>
+          new Response("Offline", {
+            status: 503,
+            statusText: "Service Unavailable",
+          }),
+      );
+    }),
   );
 });
