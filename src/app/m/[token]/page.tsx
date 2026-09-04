@@ -14,6 +14,7 @@ import { rememberMove } from "@/lib/recent";
 import { QRCodeSVG } from "qrcode.react";
 import { InstallHint } from "@/app/install-hint";
 import { BagsView } from "./bags-view";
+import { downloadArchive, type ArchiveProgress } from "@/lib/archive";
 
 interface MoveHeader {
   id: string;
@@ -356,7 +357,13 @@ export default function MovePage() {
         />
       )}
 
-      {sharing && <ShareModal onClose={() => setSharing(false)} />}
+      {sharing && move && (
+        <ShareModal
+          moveId={move.id}
+          supabase={supabase}
+          onClose={() => setSharing(false)}
+        />
+      )}
 
       {editingDate && move && (
         <EditMoveDateModal
@@ -563,15 +570,42 @@ function EditMoveDateModal({
   );
 }
 
-function ShareModal({ onClose }: { onClose: () => void }) {
+function ShareModal({
+  moveId,
+  supabase,
+  onClose,
+}: {
+  moveId: string;
+  supabase: ReturnType<typeof getMoveSupabase>;
+  onClose: () => void;
+}) {
   const [url, setUrl] = useState("");
   const [copied, setCopied] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveProgress, setArchiveProgress] = useState<ArchiveProgress | null>(
+    null,
+  );
+  const [archiveError, setArchiveError] = useState<string | null>(null);
   const canNativeShare =
     typeof navigator !== "undefined" && typeof navigator.share === "function";
 
   useEffect(() => {
     setUrl(window.location.href);
   }, []);
+
+  async function archive() {
+    setArchiving(true);
+    setArchiveError(null);
+    setArchiveProgress({ step: "Starting…", current: 0, total: 1 });
+    try {
+      await downloadArchive(supabase, moveId, setArchiveProgress);
+    } catch (e) {
+      setArchiveError(e instanceof Error ? e.message : "Archive failed.");
+    } finally {
+      setArchiving(false);
+      setArchiveProgress(null);
+    }
+  }
 
   async function copy() {
     try {
@@ -648,6 +682,34 @@ function ShareModal({ onClose }: { onClose: () => void }) {
             >
               Share…
             </button>
+          )}
+        </div>
+
+        <div className="border-t border-zinc-200 pt-4 dark:border-zinc-800">
+          <p className="mb-2 text-xs text-zinc-500">
+            Download a self-contained archive (HTML + photos + JSON) you can
+            open offline forever, even if the server goes away.
+          </p>
+          <button
+            type="button"
+            onClick={archive}
+            disabled={archiving}
+            className="w-full rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            {archiving
+              ? archiveProgress
+                ? `${archiveProgress.step}${
+                    archiveProgress.total > 1
+                      ? ` (${archiveProgress.current}/${archiveProgress.total})`
+                      : ""
+                  }`
+                : "Preparing…"
+              : "Download archive"}
+          </button>
+          {archiveError && (
+            <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+              {archiveError}
+            </p>
           )}
         </div>
       </div>
